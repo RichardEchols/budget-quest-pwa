@@ -1,0 +1,1527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Budget Quest - Richard's Financial Adventure</title>
+
+  <!-- PWA Meta Tags -->
+  <meta name="description" content="Track spending, cancel subscriptions, build your $48k emergency fund!">
+  <meta name="theme-color" content="#7c3aed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Budget Quest">
+
+  <!-- Manifest & Icons -->
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>💰</text></svg>">
+  <link rel="apple-touch-icon" href="/icon-192.svg">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    @keyframes pulse-once { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.02); } }
+    .animate-pulse-once { animation: pulse-once 0.5s ease-in-out; }
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #64748b; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useMemo } = React;
+
+    const BudgetQuestDashboard = () => {
+      // State management with localStorage persistence
+      const [currentSavings, setCurrentSavings] = useState(() => {
+        const saved = localStorage.getItem('bq_savings');
+        return saved ? Number(saved) : 26490.05; // $27,420.01 - $929.96 paid tonight
+      });
+      const [streak, setStreak] = useState(() => {
+        const saved = localStorage.getItem('bq_streak');
+        return saved ? Number(saved) : 0;
+      });
+      const [cancelledSubs, setCancelledSubs] = useState(() => {
+        const saved = localStorage.getItem('bq_cancelled');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [dismissedTips, setDismissedTips] = useState(() => {
+        const saved = localStorage.getItem('bq_dismissed');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [paidBills, setPaidBills] = useState(() => {
+        const saved = localStorage.getItem('bq_paidbills');
+        return saved ? JSON.parse(saved) : [];
+      });
+      // Get current month dynamically
+      const getCurrentMonthString = () => {
+        const now = new Date();
+        return now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+      };
+
+      const [currentMonth, setCurrentMonth] = useState(() => {
+        const saved = localStorage.getItem('bq_month');
+        const actualMonth = getCurrentMonthString();
+        // If month changed, we'll reset spending in useEffect
+        return saved || actualMonth;
+      });
+
+      const [spending, setSpending] = useState(() => {
+        const saved = localStorage.getItem('bq_spending');
+        const savedMonth = localStorage.getItem('bq_month');
+        const actualMonth = getCurrentMonthString();
+        // If month changed, start fresh spending
+        if (savedMonth && savedMonth !== actualMonth) {
+          return { food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 };
+        }
+        return saved ? JSON.parse(saved) : {
+          food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0
+        };
+      });
+      const [transactions, setTransactions] = useState(() => {
+        const saved = localStorage.getItem('bq_transactions');
+        return saved ? JSON.parse(saved) : [];
+      });
+      const [showCardPayment, setShowCardPayment] = useState(false);
+      const [cardPaymentAmount, setCardPaymentAmount] = useState('');
+      const [showAddIncome, setShowAddIncome] = useState(false);
+      const [incomeAmount, setIncomeAmount] = useState('');
+      const [incomeNote, setIncomeNote] = useState('');
+      const [appleCardBalance, setAppleCardBalance] = useState(() => {
+        const saved = localStorage.getItem('bq_cardbalance');
+        return saved ? Number(saved) : 25.06; // Current balance after paying off $929.96
+      });
+
+      const [level, setLevel] = useState(1);
+      const [xp, setXp] = useState(0);
+      const [activeTip, setActiveTip] = useState(null);
+      const [showTipModal, setShowTipModal] = useState(false);
+      const [expandedSub, setExpandedSub] = useState(null);
+      const [showConfetti, setShowConfetti] = useState(false);
+      const [activeTab, setActiveTab] = useState('overview');
+      const [showAddExpense, setShowAddExpense] = useState(false);
+      const [expenseCategory, setExpenseCategory] = useState('food_delivery');
+      const [expenseAmount, setExpenseAmount] = useState('');
+
+      // Check for month change and auto-reset spending
+      useEffect(() => {
+        const actualMonth = getCurrentMonthString();
+        if (currentMonth !== actualMonth) {
+          // Month changed! Reset spending but keep savings
+          setSpending({ food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 });
+          setCurrentMonth(actualMonth);
+          setPaidBills([]); // Reset paid bills for new month
+        }
+      }, []);
+
+      // Save to localStorage
+      useEffect(() => { localStorage.setItem('bq_savings', currentSavings); }, [currentSavings]);
+      useEffect(() => { localStorage.setItem('bq_streak', streak); }, [streak]);
+      useEffect(() => { localStorage.setItem('bq_cancelled', JSON.stringify(cancelledSubs)); }, [cancelledSubs]);
+      useEffect(() => { localStorage.setItem('bq_dismissed', JSON.stringify(dismissedTips)); }, [dismissedTips]);
+      useEffect(() => { localStorage.setItem('bq_paidbills', JSON.stringify(paidBills)); }, [paidBills]);
+      useEffect(() => { localStorage.setItem('bq_spending', JSON.stringify(spending)); }, [spending]);
+      useEffect(() => { localStorage.setItem('bq_month', currentMonth); }, [currentMonth]);
+      useEffect(() => { localStorage.setItem('bq_transactions', JSON.stringify(transactions)); }, [transactions]);
+      useEffect(() => { localStorage.setItem('bq_cardbalance', appleCardBalance); }, [appleCardBalance]);
+
+      const EMERGENCY_FUND_GOAL = 48000;
+      const MONTHLY_INCOME = 6524; // $3,261.80 × 2 paychecks = $6,523.60/month take-home
+      const SPENDING_BUDGET = 1000;
+      const STARTING_SAVINGS = 27420; // Apple Savings balance as of Jan 2026
+
+      // Fixed Bills with REAL data from your bills
+      const fixedBills = [
+        { id: 'mortgage', name: 'Mortgage', amount: 2198.58, dueDay: 1, autopay: true, autopayDate: 30, icon: '🏠', note: 'Due 1st, autopay 30th prior month' },
+        { id: 'gas', name: 'SCANA Gas', amount: 112.77, dueDay: 28, autopay: true, icon: '🔥', variable: true, estimate: { low: 40, high: 115, avg: 80 }, note: 'Variable - higher in winter' },
+        { id: 'internet', name: 'AT&T Internet', amount: 125.32, dueDay: 5, autopay: true, icon: '🌐', note: '2 GIG Fiber - fixed price' },
+        { id: 'phone', name: 'AT&T Phone', amount: 70.37, dueDay: 21, autopay: true, icon: '📱', note: 'Includes Teacher discount -$21.50' },
+        { id: 'power', name: 'Georgia Power', amount: 228.56, dueDay: 28, autopay: false, icon: '⚡', variable: true, estimate: { low: 150, high: 230, avg: 200 }, note: 'NOT on autopay!', payUrl: 'https://customerlogin.southernco.com/' },
+        { id: 'water', name: 'DeKalb Water', amount: 20.63, dueDay: 4, autopay: false, icon: '💧', variable: true, estimate: { low: 15, high: 27, avg: 22 }, note: 'NOT on autopay!', payUrl: 'https://www.invoicecloud.com/portal/(S(pipq1r3yd2nxf2jrb1bl3aqr))/2/customerlocator.aspx?iti=1&bg=0b13fbf9-01c5-41f3-8549-2d5277a00a99&vsii=1834&return=1', accountInfo: 'Acct: 3072860300 • Name: Stokes' },
+        { id: 'insurance', name: 'State Farm', amount: 187.00, dueDay: 15, autopay: true, icon: '🚗', note: 'Auto + Home insurance' },
+        { id: 'mattress', name: 'Mattress Payment', amount: 322.00, dueDay: 15, autopay: true, icon: '🛏️', note: 'Financing payment' },
+        { id: 'flowers', name: 'Bouqs Flowers', amount: 52.00, dueDay: 15, autopay: true, icon: '💐', note: 'Recurring delivery' },
+        { id: 'ro_health', name: 'Ro Health', amount: 500.00, dueDay: 15, autopay: true, icon: '💊', note: 'Health subscription' },
+        { id: 'pest', name: 'Pest Control', amount: 95.68, dueDay: 15, autopay: true, icon: '🐜', note: 'Quarterly? Check billing' },
+        { id: 'donations', name: 'Donations', amount: 40.00, dueDay: 15, autopay: true, icon: '🙏', note: 'Regular giving' },
+        { id: 'groceries', name: 'Grocery Fund', amount: 400.00, dueDay: 15, autopay: true, icon: '🛒', note: '$200/paycheck to joint grocery fund' },
+      ];
+
+      // Spending categories with budgets
+      const spendingCategories = [
+        { id: 'food_delivery', name: 'Food Delivery', icon: '🍔', budget: 200, color: 'orange' },
+        { id: 'shopping', name: 'Shopping', icon: '🛒', budget: 300, color: 'blue' },
+        { id: 'gas', name: 'Gas', icon: '⛽', budget: 100, color: 'yellow' },
+        { id: 'entertainment', name: 'Entertainment', icon: '🎬', budget: 200, color: 'purple' },
+        { id: 'personal', name: 'Personal', icon: '💈', budget: 100, color: 'pink' },
+        { id: 'other', name: 'Other', icon: '📦', budget: 100, color: 'gray' },
+      ];
+
+      // Subscriptions to cancel - Apple Card
+      const appleCardSubsToCancel = [
+        { name: "OpenAI ChatGPT", amount: 80, priority: "high", reason: "You have Claude", cancelUrl: "https://chatgpt.com/#settings", cancelSteps: "Click your profile icon → Settings → Manage my subscription → Cancel", relatedTips: ["chatgpt-claude"], card: "apple" },
+        { name: "XAI Grok", amount: 30, priority: "high", reason: "Duplicate AI", cancelUrl: "https://x.com/settings/premium", cancelSteps: "Settings → Premium → Manage subscription → Cancel", relatedTips: ["chatgpt-claude"], card: "apple" },
+        { name: "Kling AI", amount: 200, priority: "critical", reason: "$878 in Dec alone!", cancelUrl: "https://klingai.com/global/account", cancelSteps: "Account → Membership Plan → Manage → Cancel via Stripe portal", relatedTips: ["ai-video"], card: "apple" },
+        { name: "Higgsfield", amount: 89, priority: "high", reason: "AI video tool", cancelUrl: "https://higgsfield.ai/auth", cancelSteps: "Login → Payment Settings → Cancel (or email mobile@higgsfield.ai)", relatedTips: ["ai-video"], card: "apple" },
+        { name: "Opus Clip", amount: 29, priority: "medium", reason: "Video editing", cancelUrl: "https://www.opus.pro/", cancelSteps: "Dashboard → Crown icon (sidebar) → Account Settings → Billing → Cancel plan", relatedTips: ["ai-video"], card: "apple" },
+        { name: "Descript", amount: 35, priority: "medium", reason: "Video editing", cancelUrl: "https://web.descript.com/", cancelSteps: "Profile icon → Settings → Plan tab → Change plan → Downgrade to Free", relatedTips: [], card: "apple" },
+        { name: "Thumbnail.AI", amount: 34, priority: "medium", reason: "AI thumbnails", cancelUrl: "https://thumbnail.ai/dashboard", cancelSteps: "Login → Account Settings → Billing → Cancel subscription", relatedTips: ["thumbnail-tools"], card: "apple" },
+        { name: "Canva Pro", amount: 15, priority: "low", reason: "Free version works", cancelUrl: "https://www.canva.com/settings/billing", cancelSteps: "Billing page → Under your plan → Cancel plan → Complete wizard", relatedTips: ["thumbnail-tools"], card: "apple" },
+        { name: "Suno AI", amount: 10, priority: "low", reason: "AI music", cancelUrl: "https://suno.com/account", cancelSteps: "Account page → Click 'Cancel Subscription' at top of page", relatedTips: [], card: "apple" },
+        { name: "VidIQ", amount: 14, priority: "low", reason: "YouTube analytics", cancelUrl: "https://vidiq.com/app/", cancelSteps: "Account Settings → Manage Plan → Cancel Subscription", relatedTips: [], card: "apple" },
+        { name: "Extra Google One", amount: 170, priority: "critical", reason: "DUPLICATE CHARGE!", cancelUrl: "https://one.google.com/settings", cancelSteps: "Settings → Cancel membership (keep ONE 2TB plan only!)", relatedTips: ["google-duplicate"], card: "apple" },
+        { name: "PixelDojo AI", amount: 25, priority: "medium", reason: "AI image tool", cancelUrl: "https://pixeldojo.ai/", cancelSteps: "Login → Account Settings → Billing → Cancel subscription", relatedTips: [], card: "apple" },
+        { name: "CloudConvert", amount: 9, priority: "low", reason: "File conversion", cancelUrl: "https://cloudconvert.com/dashboard", cancelSteps: "Dashboard → Billing Settings → Cancel subscription", relatedTips: [], card: "apple" },
+      ];
+
+      // Subscriptions to cancel - Amex Business
+      const amexSubsToCancel = [
+        { name: "Squarespace", amount: 25.20, priority: "high", reason: "EIG Analytics on hold", cancelUrl: "https://account.squarespace.com/settings/billing", cancelSteps: "Account Settings → Billing → Cancel subscription → Confirm", relatedTips: [], card: "amex" },
+        { name: "Microsoft 365", amount: 9.99, priority: "medium", reason: "Not needed", cancelUrl: "https://account.microsoft.com/services", cancelSteps: "Services & subscriptions → Find Microsoft 365 → Manage → Cancel subscription", relatedTips: [], card: "amex" },
+      ];
+
+      // Combined subscriptions to cancel
+      const subscriptionsToCancel = [...appleCardSubsToCancel, ...amexSubsToCancel];
+
+      // Smart tips with related subscriptions
+      const costSavingTips = [
+        {
+          id: "chatgpt-claude",
+          category: "AI Assistants",
+          icon: "🤖",
+          title: "Too Many AI Assistants",
+          currentSpend: "$210/month",
+          potentialSaving: "$110/month",
+          suggestion: "You're paying for ChatGPT ($80), Grok ($30), AND Claude ($100). Pick ONE - you said Claude!",
+          relatedSubs: ["OpenAI ChatGPT", "XAI Grok"],
+          alternatives: [
+            { name: "Claude Pro (KEEP)", url: "https://claude.ai/", saving: "$100/month - your choice!" },
+            { name: "Cancel ChatGPT", url: "https://chatgpt.com/#settings", saving: "Save $80/month" },
+          ],
+          actionTip: "Keep Claude, cancel the rest. One good AI assistant is all you need!"
+        },
+        {
+          id: "ai-video",
+          category: "AI Video Tools",
+          icon: "🎬",
+          title: "AI Video Tool Overload",
+          currentSpend: "$1,050/month (Dec)",
+          potentialSaving: "$1,000/month",
+          suggestion: "Kling AI ($878) + Higgsfield ($173) in December is excessive.",
+          relatedSubs: ["Kling AI", "Higgsfield", "Opus Clip"],
+          alternatives: [
+            { name: "CapCut (FREE)", url: "https://www.capcut.com/", saving: "Free video editing with AI" },
+            { name: "Runway ML", url: "https://runwayml.com/pricing/", saving: "$15/month for AI video" },
+          ],
+          actionTip: "Cancel Kling AI TODAY. That $878 could cover 2+ months of bills!"
+        },
+        {
+          id: "google-duplicate",
+          category: "Google Services",
+          icon: "🔍",
+          title: "Google Double-Billing Detected!",
+          currentSpend: "$500+ in November",
+          potentialSaving: "$170/month",
+          suggestion: "You have MULTIPLE Google One charges. You only need ONE 2TB plan.",
+          relatedSubs: ["Extra Google One"],
+          alternatives: [
+            { name: "Google One 2TB", url: "https://one.google.com/about/plans", saving: "$9.99/month is enough" },
+            { name: "Check Subscriptions", url: "https://myaccount.google.com/payments-and-subscriptions", saving: "Review ALL charges" },
+          ],
+          actionTip: "Go to Google One settings NOW and cancel duplicates!"
+        },
+        {
+          id: "thumbnail-tools",
+          category: "Thumbnail & Design",
+          icon: "🎨",
+          title: "Overlapping Design Tools",
+          currentSpend: "$79/month",
+          potentialSaving: "$64/month",
+          suggestion: "You have Canva, Thumbnail.AI, AND Opus Clip. Canva FREE does thumbnails!",
+          relatedSubs: ["Canva Pro", "Thumbnail.AI"],
+          alternatives: [
+            { name: "Canva FREE", url: "https://www.canva.com/", saving: "Thumbnails, designs - all free!" },
+            { name: "Photopea (FREE)", url: "https://www.photopea.com/", saving: "Free Photoshop alternative" },
+          ],
+          actionTip: "Downgrade Canva to FREE and cancel Thumbnail.AI. Same results, $49 saved!"
+        },
+        {
+          id: "food-delivery",
+          category: "Food & Delivery",
+          icon: "🍔",
+          title: "DoorDash & Uber Eats Alert",
+          currentSpend: "$400+/month",
+          potentialSaving: "$300/month",
+          suggestion: "You spent $400+ on food delivery in December. Try meal prepping!",
+          relatedSubs: [],
+          spendingBased: true,
+          triggerCategory: "food_delivery",
+          triggerAmount: 200,
+          alternatives: [
+            { name: "Meal Prep Containers", url: "https://www.amazon.com/s?k=meal+prep+containers", saving: "One-time $20" },
+            { name: "HelloFresh", url: "https://www.hellofresh.com/", saving: "$9/serving vs $15-25" },
+          ],
+          actionTip: "Challenge: Try ONE week without food delivery apps!"
+        },
+        {
+          id: "phone-bill",
+          category: "Phone & Internet",
+          icon: "📱",
+          title: "AT&T Bill Review",
+          currentSpend: "$190/month",
+          potentialSaving: "$90/month",
+          suggestion: "Consider switching carriers for big savings.",
+          relatedSubs: [],
+          alternatives: [
+            { name: "Mint Mobile", url: "https://www.mintmobile.com/", saving: "$15-30/month unlimited" },
+            { name: "Visible (Verizon)", url: "https://www.visible.com/", saving: "$25/month unlimited" },
+          ],
+          actionTip: "Switching to Mint Mobile could save you $1,080/year!"
+        },
+        {
+          id: "insurance",
+          category: "Insurance",
+          icon: "🚗",
+          title: "Insurance Rate Check",
+          currentSpend: "$187/month",
+          potentialSaving: "$50-100/month",
+          suggestion: "When did you last shop for insurance? Rates change.",
+          relatedSubs: [],
+          alternatives: [
+            { name: "Policygenius", url: "https://www.policygenius.com/", saving: "Compare multiple insurers" },
+            { name: "The Zebra", url: "https://www.thezebra.com/", saving: "Free comparison" },
+          ],
+          actionTip: "Spend 30 minutes getting quotes. Many save $500+/year!"
+        },
+        {
+          id: "groceries",
+          category: "Groceries",
+          icon: "🛒",
+          title: "Instacart vs Store Shopping",
+          currentSpend: "$300+/month",
+          potentialSaving: "$100/month",
+          suggestion: "Instacart charges markups + fees. In-store shopping saves more.",
+          relatedSubs: [],
+          alternatives: [
+            { name: "Costco Membership", url: "https://www.costco.com/join-costco.html", saving: "Bulk savings 20-30%" },
+            { name: "Aldi", url: "https://www.aldi.us/", saving: "30-50% cheaper" },
+          ],
+          actionTip: "One Costco trip per month + Publix for fresh = major savings!"
+        }
+      ];
+
+      // Apple Card subscriptions to keep
+      const appleCardSubsToKeep = [
+        { name: "Claude AI", amount: 100, icon: "🤖", note: "Your main AI", card: "apple" },
+        { name: "Google One 2TB", amount: 9.99, icon: "☁️", note: "ONE plan only!", card: "apple" },
+        { name: "Google GSuite", amount: 8.40, icon: "📧", note: "Business email", card: "apple" },
+        { name: "YouTube Premium", amount: 13.99, icon: "📺", note: "No ads + music", card: "apple" },
+        { name: "Apple Music", amount: 11, icon: "🎵", note: "Keep if you use it", card: "apple" },
+        { name: "Apple Cloud", amount: 10, icon: "🍎", note: "iPhone backup", card: "apple" },
+        { name: "Ring Security", amount: 10, icon: "🔔", note: "Home security", card: "apple" },
+        { name: "Patreon", amount: 16, icon: "🎨", note: "Creator support", card: "apple" },
+      ];
+
+      // Amex Business subscriptions to keep
+      const amexSubsToKeep = [
+        { name: "PostScan Mail", amount: 10, icon: "📬", note: "Virtual mailbox", card: "amex" },
+      ];
+
+      // Combined subscriptions to keep
+      const subscriptionsToKeep = [...appleCardSubsToKeep, ...amexSubsToKeep];
+
+      // Smart tip filtering - hide tips for cancelled subs
+      const shouldShowTip = (tip) => {
+        if (dismissedTips.includes(tip.id)) return false;
+        if (tip.relatedSubs && tip.relatedSubs.length > 0) {
+          const allRelatedCancelled = tip.relatedSubs.every(sub => cancelledSubs.includes(sub));
+          if (allRelatedCancelled) return false;
+        }
+        if (tip.spendingBased && tip.triggerCategory) {
+          if (spending[tip.triggerCategory] < tip.triggerAmount) return false;
+        }
+        return true;
+      };
+
+      const availableTips = useMemo(() => costSavingTips.filter(shouldShowTip), [cancelledSubs, dismissedTips, spending]);
+
+      // Calculations
+      const totalPotentialSavings = subscriptionsToCancel.reduce((sum, sub) => sum + sub.amount, 0);
+      const savedFromCancelled = cancelledSubs.reduce((sum, name) => {
+        const sub = subscriptionsToCancel.find(s => s.name === name);
+        return sum + (sub?.amount || 0);
+      }, 0);
+      const totalFixedBills = fixedBills.reduce((sum, bill) => sum + bill.amount, 0);
+      const totalKeptSubs = subscriptionsToKeep.reduce((sum, sub) => sum + sub.amount, 0);
+      const totalSpent = Object.values(spending).reduce((sum, val) => sum + val, 0);
+      const progressPercent = (currentSavings / EMERGENCY_FUND_GOAL) * 100;
+
+      // Weekly pacing calculation
+      const today = new Date();
+      const dayOfMonth = today.getDate();
+      const daysInMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
+      const weekOfMonth = Math.ceil(dayOfMonth / 7);
+      const weeklyBudget = SPENDING_BUDGET / 4;
+      const expectedSpendByNow = (dayOfMonth / daysInMonth) * SPENDING_BUDGET;
+      const spendingPace = totalSpent <= expectedSpendByNow ? 'on-track' : totalSpent <= expectedSpendByNow * 1.2 ? 'warning' : 'over';
+
+      // Bill status helpers
+      const getBillStatus = (bill) => {
+        if (paidBills.includes(`${currentMonth}-${bill.id}`)) return 'paid';
+        if (dayOfMonth > bill.dueDay) return 'overdue';
+        if (dayOfMonth >= bill.dueDay - 5) return 'due-soon';
+        return 'upcoming';
+      };
+
+      const toggleBillPaid = (billId) => {
+        const key = `${currentMonth}-${billId}`;
+        setPaidBills(prev => prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key]);
+      };
+
+      const toggleCancel = (name) => {
+        setCancelledSubs(prev => {
+          if (!prev.includes(name)) {
+            setShowConfetti(true);
+            setTimeout(() => setShowConfetti(false), 2000);
+          }
+          return prev.includes(name) ? prev.filter(n => n !== name) : [...prev, name];
+        });
+      };
+
+      const addExpense = () => {
+        const amount = parseFloat(expenseAmount);
+        if (amount > 0) {
+          const category = spendingCategories.find(c => c.id === expenseCategory);
+          setSpending(prev => ({ ...prev, [expenseCategory]: prev[expenseCategory] + amount }));
+          // Add to Apple Card balance (this is what will come out of savings)
+          setAppleCardBalance(prev => prev + amount);
+          // Add transaction record
+          const newTransaction = {
+            id: Date.now(),
+            type: 'expense',
+            amount: -amount,
+            category: category?.name || expenseCategory,
+            icon: category?.icon || '💸',
+            date: new Date().toISOString(),
+            note: `${category?.name} → Apple Card`
+          };
+          setTransactions(prev => [newTransaction, ...prev].slice(0, 50)); // Keep last 50 transactions
+          setExpenseAmount('');
+          setShowAddExpense(false);
+          if (totalSpent + amount > SPENDING_BUDGET * 0.5 && totalSpent <= SPENDING_BUDGET * 0.5) {
+            alert('50% Alert: You\'ve spent half your monthly spending budget!');
+          }
+          if (totalSpent + amount > SPENDING_BUDGET * 0.8 && totalSpent <= SPENDING_BUDGET * 0.8) {
+            alert('80% Alert: You\'re approaching your spending limit!');
+          }
+        }
+      };
+
+      // Pay Apple Card from savings - deducts from savings and resets card balance
+      const payAppleCard = () => {
+        const amount = parseFloat(cardPaymentAmount);
+        if (amount > 0) {
+          setCurrentSavings(prev => prev - amount);
+          setAppleCardBalance(0); // Reset card balance to $0 after payment
+          const newTransaction = {
+            id: Date.now(),
+            type: 'card_payment',
+            amount: -amount,
+            category: 'Apple Card Payment',
+            icon: '🍎💳',
+            date: new Date().toISOString(),
+            note: 'Paid Apple Card from savings'
+          };
+          setTransactions(prev => [newTransaction, ...prev].slice(0, 50));
+          setCardPaymentAmount('');
+          setShowCardPayment(false);
+          // Reset spending for new billing cycle
+          setSpending({ food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 });
+        }
+      };
+
+      // Add income to savings
+      const addIncome = () => {
+        const amount = parseFloat(incomeAmount);
+        if (amount > 0) {
+          setCurrentSavings(prev => prev + amount);
+          const newTransaction = {
+            id: Date.now(),
+            type: 'income',
+            amount: amount,
+            category: incomeNote || 'Paycheck',
+            icon: '💰',
+            date: new Date().toISOString(),
+            note: incomeNote || 'Income deposit'
+          };
+          setTransactions(prev => [newTransaction, ...prev].slice(0, 50));
+          setIncomeAmount('');
+          setIncomeNote('');
+          setShowAddIncome(false);
+          setShowConfetti(true);
+          setTimeout(() => setShowConfetti(false), 2000);
+        }
+      };
+
+      // Reset/Sync to correct current values - prompts for current balances
+      const syncToCurrentValues = () => {
+        const savingsInput = prompt('Enter your current Apple Savings balance:', currentSavings);
+        if (savingsInput === null) return; // Cancelled
+        const cardInput = prompt('Enter your current Apple Card balance:', appleCardBalance);
+        if (cardInput === null) return; // Cancelled
+
+        const newSavings = parseFloat(savingsInput) || 0;
+        const newCardBalance = parseFloat(cardInput) || 0;
+
+        setCurrentSavings(newSavings);
+        setAppleCardBalance(newCardBalance);
+        setCurrentMonth(getCurrentMonthString());
+        setSpending({ food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 });
+        setPaidBills([]);
+        alert(`✅ Synced! Savings: $${newSavings.toLocaleString()} | Card Balance: $${newCardBalance.toLocaleString()}`);
+      };
+
+      // Copy to clipboard helper
+      const copyToClipboard = (text, label) => {
+        navigator.clipboard.writeText(text).then(() => {
+          alert(`✅ Copied ${label}: ${text}`);
+        }).catch(() => {
+          alert('Copy failed - try manually selecting the text');
+        });
+      };
+
+      useEffect(() => {
+        const baseXP = cancelledSubs.length * 100 + (currentSavings / 100) + (streak * 25) + paidBills.length * 10;
+        setXp(Math.floor(baseXP));
+        setLevel(Math.floor(baseXP / 500) + 1);
+      }, [cancelledSubs, currentSavings, streak, paidBills]);
+
+      useEffect(() => {
+        if (availableTips.length > 0 && !showTipModal) {
+          const timer = setTimeout(() => {
+            const randomTip = availableTips[Math.floor(Math.random() * availableTips.length)];
+            setActiveTip(randomTip);
+            setShowTipModal(true);
+          }, 20000);
+          return () => clearTimeout(timer);
+        }
+      }, [availableTips, showTipModal]);
+
+      const getPriorityColor = (priority) => {
+        switch(priority) {
+          case 'critical': return 'bg-red-500';
+          case 'high': return 'bg-orange-500';
+          case 'medium': return 'bg-yellow-500';
+          case 'low': return 'bg-green-500';
+          default: return 'bg-gray-500';
+        }
+      };
+
+      const getStatusColor = (status) => {
+        switch(status) {
+          case 'paid': return 'bg-green-500/20 border-green-500';
+          case 'overdue': return 'bg-red-500/20 border-red-500';
+          case 'due-soon': return 'bg-yellow-500/20 border-yellow-500';
+          default: return 'bg-slate-700/50 border-slate-600';
+        }
+      };
+
+      const getMilestone = () => {
+        if (currentSavings >= 48000) return { name: "LEGENDARY SAVER", icon: "👑", color: "text-yellow-400" };
+        if (currentSavings >= 36000) return { name: "Elite Saver", icon: "💎", color: "text-purple-400" };
+        if (currentSavings >= 24000) return { name: "Pro Saver", icon: "🏆", color: "text-blue-400" };
+        if (currentSavings >= 10000) return { name: "Rising Star", icon: "⭐", color: "text-green-400" };
+        return { name: "Budget Warrior", icon: "⚔️", color: "text-gray-400" };
+      };
+
+      const milestone = getMilestone();
+
+      // Components
+      const Confetti = () => {
+        if (!showConfetti) return null;
+        return (
+          <div className="fixed inset-0 pointer-events-none z-50 overflow-hidden">
+            {[...Array(50)].map((_, i) => (
+              <div key={i} className="absolute" style={{
+                left: `${Math.random() * 100}%`, top: `-20px`, fontSize: '24px',
+                animation: `fall ${2 + Math.random() * 2}s linear forwards`,
+                animationDelay: `${Math.random() * 0.5}s`
+              }}>
+                {['🎉', '💰', '⭐', '🔥', '💎'][Math.floor(Math.random() * 5)]}
+              </div>
+            ))}
+            <style>{`@keyframes fall { to { transform: translateY(100vh) rotate(360deg); opacity: 0; } }`}</style>
+          </div>
+        );
+      };
+
+      const TipModal = ({ tip, onClose, onDismiss }) => {
+        if (!tip) return null;
+        const isResolved = tip.relatedSubs?.every(sub => cancelledSubs.includes(sub));
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={onClose}>
+            <div className="bg-slate-800 rounded-2xl max-w-lg w-full border border-purple-500/50 shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              <div className="p-6">
+                <div className="flex justify-between items-start mb-4">
+                  <div className="flex items-center gap-3">
+                    <span className="text-4xl">{tip.icon}</span>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs bg-purple-600 px-2 py-1 rounded-full">{tip.category}</span>
+                        {isResolved && <span className="text-xs bg-green-600 px-2 py-1 rounded-full">✓ Resolved</span>}
+                      </div>
+                      <h3 className="text-xl font-bold mt-1">{tip.title}</h3>
+                    </div>
+                  </div>
+                  <button onClick={onClose} className="text-gray-400 hover:text-white text-2xl">×</button>
+                </div>
+                {isResolved ? (
+                  <div className="bg-green-900/30 rounded-lg p-4 mb-4 border border-green-500/50">
+                    <div className="text-green-400 font-bold mb-2">🎉 Great job!</div>
+                    <div className="text-gray-300">You've already cancelled the related subscriptions for this tip!</div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-2 gap-4 mb-4">
+                      <div className="bg-red-900/30 rounded-lg p-3 text-center">
+                        <div className="text-xs text-red-300">Current Spend</div>
+                        <div className="text-xl font-bold text-red-400">{tip.currentSpend}</div>
+                      </div>
+                      <div className="bg-green-900/30 rounded-lg p-3 text-center">
+                        <div className="text-xs text-green-300">You Could Save</div>
+                        <div className="text-xl font-bold text-green-400">{tip.potentialSaving}</div>
+                      </div>
+                    </div>
+                    <p className="text-gray-300 mb-4">{tip.suggestion}</p>
+                    <div className="bg-slate-700/50 rounded-lg p-4 mb-4">
+                      <h4 className="font-bold text-yellow-400 flex items-center gap-2 mb-3">💡 Better Alternatives</h4>
+                      <div className="space-y-2">
+                        {tip.alternatives.map((alt, idx) => (
+                          <a key={idx} href={alt.url} target="_blank" rel="noopener noreferrer"
+                            className="flex items-center justify-between bg-slate-600/50 hover:bg-slate-500/50 rounded-lg p-3 transition group">
+                            <div className="flex items-center gap-2">
+                              <span className="text-blue-400">🔗</span>
+                              <span>{alt.name}</span>
+                            </div>
+                            <span className="text-xs text-green-400">{alt.saving}</span>
+                          </a>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="bg-gradient-to-r from-yellow-900/30 to-orange-900/30 rounded-lg p-4 border border-yellow-500/30">
+                      <div className="flex items-start gap-2">
+                        <span className="text-yellow-400">✨</span>
+                        <div>
+                          <div className="font-bold text-yellow-400">Action Challenge!</div>
+                          <div className="text-sm text-gray-300">{tip.actionTip}</div>
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3 mt-6">
+                  <button onClick={onClose} className="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-bold transition">
+                    Maybe Later
+                  </button>
+                  <button onClick={() => { onDismiss(tip.id); }} className="flex-1 bg-green-600 hover:bg-green-500 rounded-lg py-3 font-bold transition">
+                    Got It! ✓
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
+      const AddExpenseModal = () => (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowAddExpense(false)}>
+          <div className="bg-slate-800 rounded-2xl max-w-md w-full border border-blue-500/50 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold mb-4">➕ Add Expense</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Category</label>
+                <div className="grid grid-cols-3 gap-2">
+                  {spendingCategories.map(cat => (
+                    <button key={cat.id}
+                      onClick={() => setExpenseCategory(cat.id)}
+                      className={`p-3 rounded-lg text-center transition ${expenseCategory === cat.id ? 'bg-blue-600 border-2 border-blue-400' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                      <div className="text-2xl">{cat.icon}</div>
+                      <div className="text-xs mt-1">{cat.name}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Amount</label>
+                <input type="number" value={expenseAmount} onChange={e => setExpenseAmount(e.target.value)}
+                  placeholder="Enter amount" className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-xl" autoFocus />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setShowAddExpense(false)} className="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-bold">Cancel</button>
+                <button onClick={addExpense} className="flex-1 bg-green-600 hover:bg-green-500 rounded-lg py-3 font-bold">Add ${expenseAmount || '0'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // Card Payment Modal
+      const CardPaymentModal = () => (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowCardPayment(false)}>
+          <div className="bg-slate-800 rounded-2xl max-w-md w-full border border-red-500/50 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold mb-2">🍎💳 Pay Apple Card</h3>
+            <p className="text-gray-400 text-sm mb-4">This deducts from your Apple Savings balance</p>
+            <div className="space-y-4">
+              <div className="bg-slate-700/50 rounded-lg p-4 text-center">
+                <div className="text-sm text-gray-400">Current Savings Balance</div>
+                <div className="text-2xl font-bold text-green-400">${currentSavings.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Payment Amount</label>
+                <input type="number" value={cardPaymentAmount} onChange={e => setCardPaymentAmount(e.target.value)}
+                  placeholder="Enter amount" className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-xl" autoFocus />
+              </div>
+              {cardPaymentAmount && (
+                <div className="bg-red-900/30 rounded-lg p-3 border border-red-500/30">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">After payment:</span>
+                    <span className="font-bold text-yellow-400">${(currentSavings - parseFloat(cardPaymentAmount || 0)).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => { setShowCardPayment(false); setCardPaymentAmount(''); }} className="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-bold">Cancel</button>
+                <button onClick={payAppleCard} className="flex-1 bg-red-600 hover:bg-red-500 rounded-lg py-3 font-bold">Pay ${cardPaymentAmount || '0'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      // Add Income Modal
+      const AddIncomeModal = () => (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4" onClick={() => setShowAddIncome(false)}>
+          <div className="bg-slate-800 rounded-2xl max-w-md w-full border border-green-500/50 p-6" onClick={e => e.stopPropagation()}>
+            <h3 className="text-xl font-bold mb-2">💰 Add Income</h3>
+            <p className="text-gray-400 text-sm mb-4">Add paycheck or other deposits to savings</p>
+            <div className="space-y-4">
+              <div className="bg-slate-700/50 rounded-lg p-4 text-center">
+                <div className="text-sm text-gray-400">Current Savings Balance</div>
+                <div className="text-2xl font-bold text-green-400">${currentSavings.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Amount</label>
+                <input type="number" value={incomeAmount} onChange={e => setIncomeAmount(e.target.value)}
+                  placeholder="Enter amount" className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3 text-xl" autoFocus />
+              </div>
+              <div>
+                <label className="text-sm text-gray-400 block mb-2">Note (optional)</label>
+                <input type="text" value={incomeNote} onChange={e => setIncomeNote(e.target.value)}
+                  placeholder="e.g., IBM Paycheck, Bonus, etc." className="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-3" />
+              </div>
+              {incomeAmount && (
+                <div className="bg-green-900/30 rounded-lg p-3 border border-green-500/30">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-400">After deposit:</span>
+                    <span className="font-bold text-green-400">${(currentSavings + parseFloat(incomeAmount || 0)).toLocaleString('en-US', {minimumFractionDigits: 2})}</span>
+                  </div>
+                </div>
+              )}
+              <div className="flex gap-3">
+                <button onClick={() => { setShowAddIncome(false); setIncomeAmount(''); setIncomeNote(''); }} className="flex-1 bg-slate-600 hover:bg-slate-500 rounded-lg py-3 font-bold">Cancel</button>
+                <button onClick={addIncome} className="flex-1 bg-green-600 hover:bg-green-500 rounded-lg py-3 font-bold">Add ${incomeAmount || '0'}</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+
+      return (
+        <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white p-4">
+          <Confetti />
+          {showTipModal && activeTip && <TipModal tip={activeTip} onClose={() => setShowTipModal(false)} onDismiss={(id) => { setDismissedTips(prev => [...prev, id]); setShowTipModal(false); }} />}
+          {showAddExpense && <AddExpenseModal />}
+          {showCardPayment && <CardPaymentModal />}
+          {showAddIncome && <AddIncomeModal />}
+
+          <div className="max-w-6xl mx-auto">
+            {/* Header */}
+            <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
+              <div>
+                <h1 className="text-3xl font-bold bg-gradient-to-r from-yellow-400 to-orange-500 bg-clip-text text-transparent">💰 Budget Quest v3</h1>
+                <p className="text-gray-400">Richard's Financial Adventure</p>
+              </div>
+              <div className="flex flex-wrap items-center gap-2">
+                {availableTips.length > 0 && (
+                  <button onClick={() => { setActiveTip(availableTips[Math.floor(Math.random() * availableTips.length)]); setShowTipModal(true); }}
+                    className="bg-purple-600 hover:bg-purple-500 rounded-lg px-3 py-2 flex items-center gap-2 transition text-sm">
+                    💡 <span className="hidden sm:inline">Tips ({availableTips.length})</span>
+                  </button>
+                )}
+                <button onClick={syncToCurrentValues}
+                  className="bg-slate-700 hover:bg-slate-600 rounded-lg px-3 py-2 text-sm transition" title="Reset to Jan 15 values">
+                  🔄 Sync
+                </button>
+                <div className="bg-slate-800 rounded-lg px-3 py-2 flex items-center gap-2">
+                  <span className="text-orange-500">🔥</span><span className="font-bold">{streak}</span>
+                </div>
+                <div className="bg-gradient-to-r from-purple-600 to-blue-600 rounded-lg px-3 py-2">
+                  <div className="text-xs text-purple-200">Lvl {level}</div>
+                  <div className="text-sm font-bold">{xp} XP</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Tab Navigation */}
+            <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+              {[
+                { id: 'overview', label: '📊 Overview', icon: '📊' },
+                { id: 'spending', label: '💰 Money', icon: '💰' },
+                { id: 'bills', label: '📋 Bills', icon: '📋' },
+                { id: 'subscriptions', label: '⚔️ Subs', icon: '⚔️' },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+                  className={`px-4 py-2 rounded-lg font-bold transition whitespace-nowrap ${activeTab === tab.id ? 'bg-purple-600' : 'bg-slate-700 hover:bg-slate-600'}`}>
+                  {tab.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Overview Tab */}
+            {activeTab === 'overview' && (
+              <div className="space-y-6">
+                {/* Emergency Fund Progress */}
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700">
+                  <div className="flex flex-wrap justify-between items-start mb-4 gap-2">
+                    <div>
+                      <h2 className="text-xl font-bold">🎯 Emergency Fund Quest</h2>
+                      <p className="text-gray-400 text-sm">Goal: $48,000 by Dec 2026</p>
+                    </div>
+                    <div className={`text-xl ${milestone.color}`}>{milestone.icon} {milestone.name}</div>
+                  </div>
+                  <div className="mb-4">
+                    <div className="flex justify-between text-sm mb-1">
+                      <span>Progress</span>
+                      <span className="font-bold">${currentSavings.toLocaleString()} / $48,000</span>
+                    </div>
+                    <div className="h-6 bg-slate-700 rounded-full overflow-hidden">
+                      <div className="h-full bg-gradient-to-r from-green-500 via-emerald-400 to-teal-400 rounded-full transition-all duration-1000 flex items-center justify-end pr-2"
+                        style={{ width: `${Math.max(progressPercent, 2)}%` }}>
+                        {progressPercent > 8 && <span className="text-xs font-bold">{progressPercent.toFixed(1)}%</span>}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mb-4">
+                    <span>$0</span>
+                    <span className={currentSavings >= 10000 ? "text-green-400 font-bold" : ""}>$10k ⭐</span>
+                    <span className={currentSavings >= 24000 ? "text-blue-400 font-bold" : ""}>$24k 🏆</span>
+                    <span className={currentSavings >= 36000 ? "text-purple-400 font-bold" : ""}>$36k 💎</span>
+                    <span className={currentSavings >= 48000 ? "text-yellow-400 font-bold" : ""}>$48k 👑</span>
+                  </div>
+                  <div className="mt-4 p-4 bg-slate-700/30 rounded-lg">
+                    <label className="text-sm text-gray-400 block mb-2">Manual adjustment:</label>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs text-green-400 block mb-1">💰 Apple Savings</label>
+                        <input type="number" value={currentSavings} onChange={e => setCurrentSavings(Math.max(0, Number(e.target.value)))}
+                          className="w-full bg-slate-800 border border-green-600/50 rounded-lg px-4 py-2" placeholder="Savings balance" />
+                      </div>
+                      <div>
+                        <label className="text-xs text-red-400 block mb-1">🍎💳 Card Balance</label>
+                        <input type="number" value={appleCardBalance} onChange={e => setAppleCardBalance(Math.max(0, Number(e.target.value)))}
+                          className="w-full bg-slate-800 border border-red-600/50 rounded-lg px-4 py-2" placeholder="Card balance" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* POTENTIAL SAVINGS - The Big Motivating Number */}
+                {(() => {
+                  const baseSavings = MONTHLY_INCOME - totalFixedBills - totalKeptSubs - SPENDING_BUDGET;
+                  const unspentBudget = SPENDING_BUDGET - totalSpent;
+                  const potentialSavings = baseSavings + unspentBudget + savedFromCancelled;
+                  return (
+                    <div className="bg-gradient-to-br from-green-900/50 to-emerald-900/30 rounded-2xl p-6 border-2 border-green-500/50 shadow-lg shadow-green-500/10">
+                      <div className="flex flex-wrap justify-between items-start gap-4">
+                        <div>
+                          <h2 className="text-lg font-bold text-green-300 mb-1">💎 Potential Savings This Month</h2>
+                          <p className="text-sm text-gray-400">This is what you could add to your emergency fund</p>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setCurrentSavings(s => s + potentialSavings);
+                            setShowConfetti(true);
+                            setTimeout(() => setShowConfetti(false), 3000);
+                            // Reset spending for new month
+                            setSpending({ food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 });
+                          }}
+                          className="bg-green-600 hover:bg-green-500 px-4 py-2 rounded-lg font-bold transition flex items-center gap-2">
+                          <span>Add to Fund</span>
+                          <span className="text-green-200">→</span>
+                        </button>
+                      </div>
+
+                      <div className="text-5xl font-bold text-green-400 my-4">
+                        ${potentialSavings.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </div>
+
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                        <div className="bg-slate-800/50 rounded-lg p-3">
+                          <div className="text-gray-400 text-xs mb-1">Base Savings</div>
+                          <div className="font-bold text-white">${baseSavings.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                          <div className="text-xs text-gray-500">Income - Bills - Subs - $1k budget</div>
+                        </div>
+                        <div className={`rounded-lg p-3 ${unspentBudget > 0 ? 'bg-green-900/30 border border-green-500/30' : 'bg-slate-800/50'}`}>
+                          <div className="text-gray-400 text-xs mb-1">Unspent Budget</div>
+                          <div className={`font-bold ${unspentBudget > 0 ? 'text-green-400' : unspentBudget < 0 ? 'text-red-400' : 'text-white'}`}>
+                            {unspentBudget >= 0 ? '+' : ''}${unspentBudget.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                          </div>
+                          <div className="text-xs text-gray-500">$1,000 - ${totalSpent} spent</div>
+                        </div>
+                        <div className={`rounded-lg p-3 ${savedFromCancelled > 0 ? 'bg-purple-900/30 border border-purple-500/30' : 'bg-slate-800/50'}`}>
+                          <div className="text-gray-400 text-xs mb-1">Cancelled Subs Bonus</div>
+                          <div className={`font-bold ${savedFromCancelled > 0 ? 'text-purple-400' : 'text-white'}`}>
+                            +${savedFromCancelled.toLocaleString('en-US', {minimumFractionDigits: 2})}
+                          </div>
+                          <div className="text-xs text-gray-500">{cancelledSubs.length} subscriptions cancelled</div>
+                        </div>
+                      </div>
+
+                      {unspentBudget < 500 && unspentBudget >= 0 && (
+                        <div className="mt-3 text-sm text-yellow-400 flex items-center gap-2">
+                          <span>⚠️</span>
+                          <span>Spend less to increase your savings! Every $1 saved = $1 more to emergency fund</span>
+                        </div>
+                      )}
+                      {unspentBudget < 0 && (
+                        <div className="mt-3 text-sm text-red-400 flex items-center gap-2">
+                          <span>🚨</span>
+                          <span>Over budget by ${Math.abs(unspentBudget).toFixed(2)}! This is eating into your savings.</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* Quick Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Take-Home Pay</div>
+                    <div className="text-2xl font-bold text-green-400">${MONTHLY_INCOME.toLocaleString()}</div>
+                    <div className="text-xs text-gray-500">After taxes/401k</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Fixed Bills</div>
+                    <div className="text-2xl font-bold text-red-400">${totalFixedBills.toFixed(0)}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Kept Subs</div>
+                    <div className="text-2xl font-bold text-blue-400">${totalKeptSubs.toFixed(0)}</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Subs Saved</div>
+                    <div className="text-2xl font-bold text-purple-400">${savedFromCancelled}/mo</div>
+                  </div>
+                </div>
+
+                {/* Weekly Pacing */}
+                <div className={`bg-slate-800/50 rounded-xl p-4 border ${spendingPace === 'on-track' ? 'border-green-500' : spendingPace === 'warning' ? 'border-yellow-500' : 'border-red-500'}`}>
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <h3 className="font-bold flex items-center gap-2">
+                        {spendingPace === 'on-track' ? '✅' : spendingPace === 'warning' ? '⚠️' : '🚨'} Weekly Pacing - Week {weekOfMonth}
+                      </h3>
+                      <p className="text-sm text-gray-400">Day {dayOfMonth} of {daysInMonth}</p>
+                    </div>
+                    <div className="text-right">
+                      <div className={`text-xl font-bold ${spendingPace === 'on-track' ? 'text-green-400' : spendingPace === 'warning' ? 'text-yellow-400' : 'text-red-400'}`}>
+                        ${totalSpent} / ${Math.round(expectedSpendByNow)}
+                      </div>
+                      <div className="text-xs text-gray-400">Expected by today</div>
+                    </div>
+                  </div>
+                  <div className="mt-3 h-3 bg-slate-700 rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${spendingPace === 'on-track' ? 'bg-green-500' : spendingPace === 'warning' ? 'bg-yellow-500' : 'bg-red-500'}`}
+                      style={{ width: `${Math.min((totalSpent / SPENDING_BUDGET) * 100, 100)}%` }}></div>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500 mt-1">
+                    <span>$0</span>
+                    <span>$500 (50%)</span>
+                    <span>$800 (80%)</span>
+                    <span>$1,000</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Fixed Bills Tab */}
+            {activeTab === 'bills' && (
+              <div className="space-y-6">
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-slate-700">
+                  <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-xl font-bold">📋 {currentMonth} Fixed Bills</h2>
+                    <div className="text-right">
+                      <div className="text-2xl font-bold text-red-400">${totalFixedBills.toFixed(2)}</div>
+                      <div className="text-xs text-gray-400">Total monthly</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    {fixedBills.sort((a, b) => a.dueDay - b.dueDay).map(bill => {
+                      const status = getBillStatus(bill);
+                      return (
+                        <div key={bill.id} className={`rounded-lg p-4 border transition ${getStatusColor(status)}`}>
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-3">
+                              <span className="text-2xl">{bill.icon}</span>
+                              <div>
+                                <div className="font-bold flex items-center gap-2">
+                                  {bill.name}
+                                  {bill.autopay && <span className="text-xs bg-blue-600 px-2 py-0.5 rounded">Autopay</span>}
+                                  {!bill.autopay && <span className="text-xs bg-yellow-600 px-2 py-0.5 rounded">Manual</span>}
+                                </div>
+                                <div className="text-xs text-gray-400">
+                                  Due: {bill.dueDay === 1 ? '1st' : bill.dueDay === 2 ? '2nd' : bill.dueDay === 3 ? '3rd' : `${bill.dueDay}th`}
+                                  {bill.note && <span className="ml-2">• {bill.note}</span>}
+                                </div>
+                                {bill.variable && (
+                                  <div className="text-xs text-yellow-400 mt-1">
+                                    Variable: ${bill.estimate.low}-${bill.estimate.high} (avg ${bill.estimate.avg})
+                                  </div>
+                                )}
+                                {bill.accountInfo && (
+                                  <div className="text-xs text-blue-400 mt-1">📋 {bill.accountInfo}</div>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <div className="text-right">
+                                <div className="font-bold text-lg">${bill.amount.toFixed(2)}</div>
+                                <div className={`text-xs ${status === 'paid' ? 'text-green-400' : status === 'overdue' ? 'text-red-400' : status === 'due-soon' ? 'text-yellow-400' : 'text-gray-400'}`}>
+                                  {status === 'paid' ? '✓ Paid' : status === 'overdue' ? '⚠️ Overdue!' : status === 'due-soon' ? '📅 Due Soon' : 'Upcoming'}
+                                </div>
+                              </div>
+                              {bill.payUrl && status !== 'paid' && (
+                                <a href={bill.payUrl} target="_blank" rel="noopener noreferrer"
+                                  className="bg-blue-600 hover:bg-blue-500 px-3 py-2 rounded-lg text-xs font-bold transition">
+                                  Pay →
+                                </a>
+                              )}
+                              <button onClick={() => toggleBillPaid(bill.id)}
+                                className={`w-10 h-10 rounded-full flex items-center justify-center transition ${status === 'paid' ? 'bg-green-600' : 'bg-slate-600 hover:bg-slate-500'}`}>
+                                {status === 'paid' ? '✓' : '○'}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Quick Pay Section for Manual Bills */}
+                  <div className="mt-4 p-4 bg-orange-900/30 rounded-lg border border-orange-500/50">
+                    <div className="font-bold text-orange-400 mb-3">⚡ Quick Pay - Manual Bills</div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <a href="https://customerlogin.southernco.com/" target="_blank" rel="noopener noreferrer"
+                        className="bg-slate-800 hover:bg-slate-700 rounded-lg p-4 flex items-center justify-between transition border border-slate-600">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl">⚡</span>
+                          <div>
+                            <div className="font-bold">Georgia Power</div>
+                            <div className="text-xs text-gray-400">Due 28th • ~$150-230</div>
+                          </div>
+                        </div>
+                        <span className="text-blue-400 font-bold">Pay →</span>
+                      </a>
+                      <div className="bg-slate-800 rounded-lg p-4 border border-slate-600">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl">💧</span>
+                            <div className="font-bold">DeKalb Water</div>
+                          </div>
+                          <a href="https://www.invoicecloud.com/portal/(S(pipq1r3yd2nxf2jrb1bl3aqr))/2/customerlocator.aspx?iti=1&bg=0b13fbf9-01c5-41f3-8549-2d5277a00a99&vsii=1834&return=1" target="_blank" rel="noopener noreferrer"
+                            className="bg-blue-600 hover:bg-blue-500 px-3 py-1 rounded-lg text-sm font-bold transition">
+                            Pay →
+                          </a>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <button onClick={() => copyToClipboard('3072860300', 'Account #')}
+                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm transition">
+                            <span className="text-gray-400">Acct:</span>
+                            <span className="text-blue-400 font-mono">3072860300</span>
+                            <span className="text-gray-500">📋</span>
+                          </button>
+                          <button onClick={() => copyToClipboard('Stokes', 'Last Name')}
+                            className="flex items-center gap-2 bg-slate-700 hover:bg-slate-600 px-3 py-2 rounded-lg text-sm transition">
+                            <span className="text-gray-400">Name:</span>
+                            <span className="text-blue-400">Stokes</span>
+                            <span className="text-gray-500">📋</span>
+                          </button>
+                        </div>
+                        <div className="text-xs text-gray-500 mt-2">Due 4th of each month</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Unified Money Tab - Savings + Card Payments + Income + Spending */}
+            {activeTab === 'spending' && (
+              <div className="space-y-4">
+                {/* THE BIG PICTURE - Savings, Card Balance, Real Available */}
+                <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-2xl p-6 border border-slate-600">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* Apple Savings */}
+                    <div className="text-center md:text-left">
+                      <div className="flex items-center justify-center md:justify-start gap-2 text-gray-400 text-sm mb-1">
+                        <span>🍎</span> Apple Savings
+                      </div>
+                      <div className="text-3xl font-bold text-green-400">${currentSavings.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                      <div className="text-xs text-gray-500">Your actual cash</div>
+                    </div>
+
+                    {/* Apple Card Balance */}
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-2 text-gray-400 text-sm mb-1">
+                        <span>💳</span> Apple Card Balance
+                      </div>
+                      <div className="text-3xl font-bold text-red-400">-${appleCardBalance.toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}</div>
+                      <div className="text-xs text-gray-500">What you owe (grows as you spend)</div>
+                    </div>
+
+                    {/* Available After Payoff - THE REAL NUMBER */}
+                    <div className="text-center md:text-right bg-slate-700/50 rounded-xl p-4 -m-2">
+                      <div className="flex items-center justify-center md:justify-end gap-2 text-yellow-400 text-sm mb-1">
+                        <span>💰</span> After Card Payoff
+                      </div>
+                      <div className={`text-3xl font-bold ${currentSavings - appleCardBalance > 0 ? 'text-yellow-400' : 'text-red-400'}`}>
+                        ${(currentSavings - appleCardBalance).toLocaleString('en-US', {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                      </div>
+                      <div className="text-xs text-gray-500">The REAL number</div>
+                    </div>
+                  </div>
+
+                  {/* Visual equation */}
+                  <div className="mt-4 pt-4 border-t border-slate-700 flex flex-wrap items-center justify-center gap-2 text-sm">
+                    <span className="text-green-400">${currentSavings.toLocaleString()}</span>
+                    <span className="text-gray-500">−</span>
+                    <span className="text-red-400">${appleCardBalance.toLocaleString()}</span>
+                    <span className="text-gray-500">=</span>
+                    <span className="text-yellow-400 font-bold">${(currentSavings - appleCardBalance).toLocaleString()}</span>
+                    <span className="text-gray-500 ml-2">available</span>
+                  </div>
+                </div>
+
+                {/* Action Buttons Row */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Pay Apple Card */}
+                  <button onClick={() => { setCardPaymentAmount(appleCardBalance.toFixed(2)); setShowCardPayment(true); }}
+                    className="bg-gradient-to-br from-red-900/30 to-slate-800 hover:from-red-900/40 rounded-2xl p-5 border border-red-500/30 text-left transition">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-gray-400 text-sm">🍎💳 Pay Apple Card</div>
+                        <div className="text-2xl font-bold text-red-400 mt-1">-${appleCardBalance.toLocaleString('en-US', {minimumFractionDigits: 2})}</div>
+                        <div className="text-xs text-gray-500">Pay full balance from savings</div>
+                      </div>
+                      <span className="text-2xl">→</span>
+                    </div>
+                  </button>
+
+                  {/* Add Income */}
+                  <button onClick={() => { setIncomeAmount('3261.80'); setIncomeNote('IBM Paycheck'); setShowAddIncome(true); }}
+                    className="bg-gradient-to-br from-green-900/30 to-slate-800 hover:from-green-900/40 rounded-2xl p-5 border border-green-500/30 text-left transition">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <div className="text-gray-400 text-sm">💰 Add Paycheck</div>
+                        <div className="text-2xl font-bold text-green-400 mt-1">+$3,261.80</div>
+                        <div className="text-xs text-gray-500">Deposit to savings</div>
+                      </div>
+                      <span className="text-2xl">→</span>
+                    </div>
+                  </button>
+
+                  {/* Mortgage Reminder */}
+                  <div className="bg-gradient-to-br from-purple-900/30 to-slate-800 rounded-2xl p-5 border border-purple-500/30">
+                    <div className="text-gray-400 text-sm">🏠 Mortgage (30th)</div>
+                    <div className="text-2xl font-bold text-purple-400 mt-1">-$2,198.58</div>
+                    <div className="text-xs text-gray-500">Comes directly from savings</div>
+                  </div>
+                </div>
+
+                {/* Spending Budget Section */}
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-5 border border-slate-700">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h2 className="text-xl font-bold">💵 Spending Budget</h2>
+                      <p className="text-gray-400 text-sm">{currentMonth} • Week {Math.ceil(new Date().getDate() / 7)}</p>
+                    </div>
+                    <button onClick={() => setShowAddExpense(true)} className="bg-purple-600 hover:bg-purple-500 rounded-lg px-4 py-2 font-bold transition">
+                      ➕ Add Expense
+                    </button>
+                  </div>
+
+                  {/* Big Spending Summary */}
+                  <div className="grid grid-cols-3 gap-3 mb-5">
+                    <div className="bg-slate-700/50 rounded-xl p-4 text-center">
+                      <div className="text-xs text-gray-400 mb-1">Budget</div>
+                      <div className="text-2xl font-bold text-white">$1,000</div>
+                    </div>
+                    <div className="bg-slate-700/50 rounded-xl p-4 text-center">
+                      <div className="text-xs text-gray-400 mb-1">Spent</div>
+                      <div className={`text-2xl font-bold ${totalSpent > SPENDING_BUDGET ? 'text-red-400' : totalSpent > SPENDING_BUDGET * 0.8 ? 'text-yellow-400' : 'text-green-400'}`}>
+                        ${totalSpent}
+                      </div>
+                    </div>
+                    <div className={`rounded-xl p-4 text-center ${SPENDING_BUDGET - totalSpent < 200 ? 'bg-red-900/30 border border-red-500/30' : 'bg-green-900/30 border border-green-500/30'}`}>
+                      <div className="text-xs text-gray-400 mb-1">Left to Spend</div>
+                      <div className={`text-2xl font-bold ${SPENDING_BUDGET - totalSpent < 0 ? 'text-red-400' : SPENDING_BUDGET - totalSpent < 200 ? 'text-yellow-400' : 'text-green-400'}`}>
+                        ${SPENDING_BUDGET - totalSpent}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Overall Progress Bar */}
+                  <div className="mb-5">
+                    <div className="flex justify-between text-xs text-gray-400 mb-1">
+                      <span>Total Spending</span>
+                      <span>{((totalSpent / SPENDING_BUDGET) * 100).toFixed(0)}% used</span>
+                    </div>
+                    <div className="h-4 bg-slate-700 rounded-full overflow-hidden">
+                      <div className={`h-full rounded-full transition-all ${totalSpent > SPENDING_BUDGET ? 'bg-red-500' : totalSpent > SPENDING_BUDGET * 0.8 ? 'bg-yellow-500' : totalSpent > SPENDING_BUDGET * 0.5 ? 'bg-blue-500' : 'bg-green-500'}`}
+                        style={{ width: `${Math.min((totalSpent / SPENDING_BUDGET) * 100, 100)}%` }}></div>
+                    </div>
+                    <div className="flex justify-between text-xs text-gray-500 mt-1">
+                      <span>$0</span>
+                      <span className={totalSpent >= 500 ? 'text-blue-400' : ''}>$500</span>
+                      <span className={totalSpent >= 800 ? 'text-yellow-400' : ''}>$800</span>
+                      <span className={totalSpent >= 1000 ? 'text-red-400' : ''}>$1,000</span>
+                    </div>
+                  </div>
+
+                  {/* Category Breakdown */}
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                    {spendingCategories.map(cat => {
+                      const spent = spending[cat.id];
+                      const percent = (spent / cat.budget) * 100;
+                      const status = percent >= 100 ? 'over' : percent >= 80 ? 'warning' : 'good';
+                      return (
+                        <div key={cat.id} className={`rounded-xl p-3 ${status === 'over' ? 'bg-red-900/30 border border-red-500/30' : status === 'warning' ? 'bg-yellow-900/30 border border-yellow-500/30' : 'bg-slate-700/50'}`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-xl">{cat.icon}</span>
+                            <span className="text-sm font-bold">{cat.name}</span>
+                          </div>
+                          <div className="flex justify-between items-end">
+                            <span className={`text-lg font-bold ${status === 'over' ? 'text-red-400' : status === 'warning' ? 'text-yellow-400' : 'text-white'}`}>${spent}</span>
+                            <span className="text-xs text-gray-500">/ ${cat.budget}</span>
+                          </div>
+                          <div className="h-1.5 bg-slate-600 rounded-full overflow-hidden mt-2">
+                            <div className={`h-full rounded-full ${status === 'over' ? 'bg-red-500' : status === 'warning' ? 'bg-yellow-500' : 'bg-green-500'}`}
+                              style={{ width: `${Math.min(percent, 100)}%` }}></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <button onClick={() => setSpending({ food_delivery: 0, shopping: 0, gas: 0, entertainment: 0, personal: 0, other: 0 })}
+                    className="mt-4 text-xs text-gray-500 hover:text-gray-400 underline">Reset spending for new month</button>
+                </div>
+
+                {/* Transaction History */}
+                <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-5 border border-slate-700">
+                  <h2 className="text-lg font-bold mb-3">📜 Recent Transactions</h2>
+                  {transactions.length === 0 ? (
+                    <div className="text-center text-gray-500 py-6">
+                      <div className="text-3xl mb-2">📭</div>
+                      <div className="text-sm">No transactions yet. Pay your card or add income to start tracking.</div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-[250px] overflow-y-auto">
+                      {transactions.slice(0, 10).map(tx => (
+                        <div key={tx.id} className={`rounded-lg p-3 flex justify-between items-center ${tx.amount > 0 ? 'bg-green-900/20 border border-green-800/30' : 'bg-red-900/20 border border-red-800/30'}`}>
+                          <div className="flex items-center gap-3">
+                            <span className="text-xl">{tx.icon}</span>
+                            <div>
+                              <div className="font-bold text-sm">{tx.category}</div>
+                              <div className="text-xs text-gray-500">
+                                {new Date(tx.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                            </div>
+                          </div>
+                          <div className={`font-bold ${tx.amount > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                            {tx.amount > 0 ? '+' : ''}{tx.amount.toLocaleString('en-US', {style: 'currency', currency: 'USD'})}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {transactions.length > 0 && (
+                    <button onClick={() => { if(confirm('Clear all transaction history?')) setTransactions([]); }}
+                      className="mt-3 text-xs text-gray-500 hover:text-gray-400 underline">Clear History</button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Subscriptions Tab */}
+            {activeTab === 'subscriptions' && (
+              <div className="space-y-6">
+                {/* Summary Cards */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Apple Card Enemies</div>
+                    <div className="text-2xl font-bold text-red-400">${appleCardSubsToCancel.reduce((s,x) => s + x.amount, 0)}/mo</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Amex Business Enemies</div>
+                    <div className="text-2xl font-bold text-orange-400">${amexSubsToCancel.reduce((s,x) => s + x.amount, 0).toFixed(2)}/mo</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Already Defeated</div>
+                    <div className="text-2xl font-bold text-green-400">${savedFromCancelled.toFixed(2)}/mo</div>
+                  </div>
+                  <div className="bg-slate-800/50 rounded-xl p-4 text-center border border-slate-700">
+                    <div className="text-sm text-gray-400 mb-1">Kept Subscriptions</div>
+                    <div className="text-2xl font-bold text-blue-400">${totalKeptSubs.toFixed(2)}/mo</div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                  {/* Enemies */}
+                  <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-red-900/50">
+                    <h2 className="text-xl font-bold mb-2">⚔️ Subscription Enemies</h2>
+                    <p className="text-gray-400 text-sm mb-4">${(totalPotentialSavings - savedFromCancelled).toFixed(2)}/mo to defeat</p>
+
+                    {/* Apple Card Section */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2 text-sm">
+                        <span className="text-gray-400">🍎</span>
+                        <span className="font-bold text-gray-300">Apple Card</span>
+                        <span className="text-xs bg-slate-600 px-2 py-0.5 rounded">{appleCardSubsToCancel.length} items</span>
+                      </div>
+                      <div className="space-y-2 max-h-[30vh] overflow-y-auto pr-2">
+                        {appleCardSubsToCancel.map(sub => (
+                          <div key={sub.name} className="rounded-lg overflow-hidden">
+                            <button onClick={() => setExpandedSub(expandedSub === sub.name ? null : sub.name)}
+                              className={`w-full rounded-lg p-3 text-left transition ${cancelledSubs.includes(sub.name) ? 'bg-green-900/50 border border-green-500' : 'bg-slate-700/50 hover:bg-slate-600/50'}`}>
+                              <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                  <span className={`w-2 h-2 rounded-full ${getPriorityColor(sub.priority)}`}></span>
+                                  <span className={cancelledSubs.includes(sub.name) ? 'text-green-400' : 'text-red-400'}>
+                                    {cancelledSubs.includes(sub.name) ? '✅' : '❌'}
+                                  </span>
+                                  <div>
+                                    <div className={cancelledSubs.includes(sub.name) ? 'line-through text-gray-500' : ''}>{sub.name}</div>
+                                    <div className="text-xs text-gray-500">{sub.reason}</div>
+                                  </div>
+                                </div>
+                                <div className="text-right flex items-center gap-2">
+                                  <div className={`font-bold ${cancelledSubs.includes(sub.name) ? 'text-green-400' : 'text-red-400'}`}>${sub.amount}/mo</div>
+                                  <span className={`text-gray-500 transition-transform ${expandedSub === sub.name ? 'rotate-90' : ''}`}>›</span>
+                                </div>
+                              </div>
+                            </button>
+                            {expandedSub === sub.name && (
+                              <div className="bg-slate-900/50 p-4 border-t border-slate-600">
+                                <div className="text-sm font-bold text-yellow-400 mb-1">How to Cancel:</div>
+                                <div className="text-sm text-gray-300 mb-3">{sub.cancelSteps}</div>
+                                <div className="flex gap-2 flex-wrap">
+                                  <a href={sub.cancelUrl} target="_blank" rel="noopener noreferrer"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-500 rounded-lg py-2 px-4 text-center text-sm font-bold transition min-w-[140px]">
+                                    🔗 Cancel Page
+                                  </a>
+                                  <button onClick={() => toggleCancel(sub.name)}
+                                    className={`px-4 py-2 rounded-lg font-bold text-sm transition ${cancelledSubs.includes(sub.name) ? 'bg-gray-600 hover:bg-gray-500' : 'bg-green-600 hover:bg-green-500'}`}>
+                                    {cancelledSubs.includes(sub.name) ? 'Undo' : 'Mark Done ✓'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Amex Business Section */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2 text-sm">
+                        <span className="text-blue-400">💳</span>
+                        <span className="font-bold text-gray-300">Amex Business</span>
+                        <span className="text-xs bg-slate-600 px-2 py-0.5 rounded">{amexSubsToCancel.length} items</span>
+                      </div>
+                      <div className="space-y-2">
+                        {amexSubsToCancel.map(sub => (
+                          <div key={sub.name} className="rounded-lg overflow-hidden">
+                            <button onClick={() => setExpandedSub(expandedSub === sub.name ? null : sub.name)}
+                              className={`w-full rounded-lg p-3 text-left transition ${cancelledSubs.includes(sub.name) ? 'bg-green-900/50 border border-green-500' : 'bg-orange-900/30 hover:bg-orange-800/30 border border-orange-700/50'}`}>
+                              <div className="flex justify-between items-center">
+                                <div className="flex items-center gap-3">
+                                  <span className={`w-2 h-2 rounded-full ${getPriorityColor(sub.priority)}`}></span>
+                                  <span className={cancelledSubs.includes(sub.name) ? 'text-green-400' : 'text-orange-400'}>
+                                    {cancelledSubs.includes(sub.name) ? '✅' : '❌'}
+                                  </span>
+                                  <div>
+                                    <div className={cancelledSubs.includes(sub.name) ? 'line-through text-gray-500' : ''}>{sub.name}</div>
+                                    <div className="text-xs text-gray-500">{sub.reason}</div>
+                                  </div>
+                                </div>
+                                <div className="text-right flex items-center gap-2">
+                                  <div className={`font-bold ${cancelledSubs.includes(sub.name) ? 'text-green-400' : 'text-orange-400'}`}>${sub.amount}/mo</div>
+                                  <span className={`text-gray-500 transition-transform ${expandedSub === sub.name ? 'rotate-90' : ''}`}>›</span>
+                                </div>
+                              </div>
+                            </button>
+                            {expandedSub === sub.name && (
+                              <div className="bg-slate-900/50 p-4 border-t border-slate-600">
+                                <div className="text-sm font-bold text-yellow-400 mb-1">How to Cancel:</div>
+                                <div className="text-sm text-gray-300 mb-3">{sub.cancelSteps}</div>
+                                <div className="flex gap-2 flex-wrap">
+                                  <a href={sub.cancelUrl} target="_blank" rel="noopener noreferrer"
+                                    className="flex-1 bg-blue-600 hover:bg-blue-500 rounded-lg py-2 px-4 text-center text-sm font-bold transition min-w-[140px]">
+                                    🔗 Cancel Page
+                                  </a>
+                                  <button onClick={() => toggleCancel(sub.name)}
+                                    className={`px-4 py-2 rounded-lg font-bold text-sm transition ${cancelledSubs.includes(sub.name) ? 'bg-gray-600 hover:bg-gray-500' : 'bg-green-600 hover:bg-green-500'}`}>
+                                    {cancelledSubs.includes(sub.name) ? 'Undo' : 'Mark Done ✓'}
+                                  </button>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {cancelledSubs.length > 0 && (
+                      <div className="mt-4 p-4 bg-green-900/30 rounded-lg border border-green-500/50">
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-green-400">🎉 {cancelledSubs.length} defeated!</span>
+                          <span className="text-green-300">+${savedFromCancelled.toFixed(2)}/mo saved</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Allies */}
+                  <div className="bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-green-900/50">
+                    <h2 className="text-xl font-bold mb-2">🛡️ Subscription Allies</h2>
+                    <p className="text-gray-400 text-sm mb-4">${totalKeptSubs.toFixed(2)}/mo • Worth keeping</p>
+
+                    {/* Apple Card Allies */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2 text-sm">
+                        <span className="text-gray-400">🍎</span>
+                        <span className="font-bold text-gray-300">Apple Card</span>
+                      </div>
+                      <div className="space-y-2">
+                        {appleCardSubsToKeep.map(sub => (
+                          <div key={sub.name} className="bg-green-900/20 border border-green-800/50 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{sub.icon}</span>
+                                <div>
+                                  <div>{sub.name}</div>
+                                  <div className="text-xs text-gray-500">{sub.note}</div>
+                                </div>
+                              </div>
+                              <span className="text-green-400 font-bold">${sub.amount}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Amex Business Allies */}
+                    <div className="mb-4">
+                      <div className="flex items-center gap-2 mb-2 text-sm">
+                        <span className="text-blue-400">💳</span>
+                        <span className="font-bold text-gray-300">Amex Business</span>
+                      </div>
+                      <div className="space-y-2">
+                        {amexSubsToKeep.map(sub => (
+                          <div key={sub.name} className="bg-blue-900/20 border border-blue-800/50 rounded-lg p-3">
+                            <div className="flex justify-between items-center">
+                              <div className="flex items-center gap-3">
+                                <span className="text-2xl">{sub.icon}</span>
+                                <div>
+                                  <div>{sub.name}</div>
+                                  <div className="text-xs text-gray-500">{sub.note}</div>
+                                </div>
+                              </div>
+                              <span className="text-blue-400 font-bold">${sub.amount}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="mt-4 p-4 bg-yellow-900/30 rounded-lg border border-yellow-500/50">
+                      <div className="flex items-start gap-2">
+                        <span className="text-yellow-400">⚠️</span>
+                        <div className="text-sm">
+                          <div className="font-bold text-yellow-400">Google Double-Pay Alert!</div>
+                          <div className="text-gray-300 mb-2">Check for duplicate charges!</div>
+                          <a href="https://myaccount.google.com/payments-and-subscriptions" target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 text-blue-400 hover:text-blue-300">🔗 Check Google subscriptions</a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Smart Tips Summary */}
+            {availableTips.length > 0 && activeTab === 'overview' && (
+              <div className="mt-6 bg-slate-800/50 backdrop-blur rounded-2xl p-6 border border-purple-500/30">
+                <h2 className="text-xl font-bold mb-4">💡 Relevant Saving Tips ({availableTips.length})</h2>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {availableTips.slice(0, 4).map(tip => (
+                    <button key={tip.id} onClick={() => { setActiveTip(tip); setShowTipModal(true); }}
+                      className="bg-slate-700/50 hover:bg-slate-600/50 rounded-xl p-4 text-left border border-slate-600 hover:border-purple-500 transition">
+                      <div className="text-3xl mb-2">{tip.icon}</div>
+                      <div className="font-bold text-sm">{tip.category}</div>
+                      <div className="text-green-400 font-bold text-sm">Save {tip.potentialSaving}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Footer */}
+            <div className="mt-6 text-center text-gray-500 text-sm">
+              <p>Keep slaying those subscription dragons! 🐉⚔️</p>
+              <p className="text-xs mt-1">Progress saves automatically • Based on your Jan 2026 bills</p>
+              <button onClick={() => {
+                if (confirm("Reset all progress? This cannot be undone.")) {
+                  localStorage.clear();
+                  window.location.reload();
+                }
+              }} className="text-gray-600 hover:text-gray-400 text-xs underline mt-2">Reset All Progress</button>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<BudgetQuestDashboard />);
+  </script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('SW registered:', reg.scope))
+          .catch(err => console.log('SW registration failed:', err));
+      });
+    }
+  </script>
+</body>
+</html>
